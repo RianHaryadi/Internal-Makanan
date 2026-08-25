@@ -1,0 +1,5 @@
+{
+  "status": "error",
+  "error": "No API key found. Set HERMES_CUSTOM_9ROUTER_AIDONEXT_COM_API_KEY env var or write key to $TEMP/.hermes_api_key",
+  "code_blocks_summary": []
+}

@@ -1,0 +1,147 @@
+Build the remaining files for a Next.js 16 (App Router) + Drizzle ORM + PostgreSQL internal food-ordering app called "pesan-makan". The project is already scaffolded at the current working directory.
+
+ALREADY EXISTING (do NOT recreate or modify these):
+- src/db/schema.ts — Drizzle schema with 5 tables: warungs, menu_items, sessions, orders, order_items. Has type exports: Warung, MenuItem, Session, Order, OrderItem.
+- src/db/index.ts — exports `db` (drizzle instance) and `schema`.
+- src/db/queries.ts — exports: getAllWarungs, getWarungById, getMenuItemsByWarung, getAllSessions, getSessionById, getOrdersBySession, getSessionRecapData, getOrderById, getMenuItemById.
+- src/lib/utils.ts — exports: formatRupiah(n), formatDateID(d), cn(...classes).
+- src/lib/recap.ts — exports: generateWarungRecap(s), generateBillingRecap(s). Takes RecapSessionData interface.
+- src/app/layout.tsx — root layout with nav (Beranda, Warung, Sesi). Uses Tailwind v4, orange theme, max-w-3xl.
+- src/app/globals.css — Tailwind v4 import + base styles.
+- .env — DATABASE_URL=postgresql://pesan:pesan123@localhost:5440/pesan_makan
+- drizzle.config.ts, package.json (has db:push script)
+
+DB SCHEMA SUMMARY (for reference):
+- warungs: id(text pk, cuid), nama(text), created_at
+- menu_items: id(text pk, cuid), warung_id(fk->warungs), nama_item(text), harga(integer, rupiah), created_at. Unique index on (warung_id, nama_item).
+- sessions: id(text pk, cuid), warung_id(fk->warungs), tanggal(date), status(enum 'open'|'closed'), nama_penagih(text,nullable), nama_bank(text,nullable), no_rekening(text,nullable), biaya_tambahan(integer,default 0), closed_at(timestamp,nullable), created_at
+- orders: id(text pk, cuid), session_id(fk->sessions), nama_pemesan(text), created_at. Unique index on (session_id, nama_pemesan) — one order per name per session.
+- order_items: id(text pk, cuid), order_id(fk->orders), menu_item_id(fk->menu_items), qty(integer, default 1). Unique index on (order_id, menu_item_id).
+
+IMPORTS NOTE: Use `import { db, schema } from "@/db"` for the db instance. Use `import { queries } from "@/db/queries"` — WAIT, queries.ts exports individual functions, not a namespace. So import like: `import { getAllWarungs, getWarungById } from "@/db/queries"`. Import schema tables from "@/db/schema" like: `import { warungs, menuItems } from "@/db/schema"`. Import types like: `import type { Warung } from "@/db/schema"`.
+
+NEEDS TO BE CREATED (14 files total):
+
+=== API ROUTES (7 files) ===
+
+1. src/app/api/warungs/route.ts
+   - GET: return all warungs (call getAllWarungs), as JSON.
+   - POST: create warung. Body: { nama: string }. Validate nama not empty. Insert into warungs table, return the created warung as JSON with status 201.
+
+2. src/app/api/warungs/[id]/route.ts
+   - GET: return warung by id (getWarungById) + its menu items (getMenuItemsByWarung). Return { warung, menuItems }.
+   - PUT: update warung nama. Body: { nama: string }. Return updated warung.
+   - DELETE: delete warung by id. Use db.delete(warungs).where(eq(warungs.id, id)). Return 200.
+
+3. src/app/api/menu-items/route.ts
+   - POST: create menu item. Body: { warungId, namaItem, harga }. Validate all fields. Insert into menu_items. Return created item with 201.
+
+4. src/app/api/menu-items/[id]/route.ts
+   - PUT: update menu item. Body: { namaItem?, harga? }. Update only provided fields. Return updated item.
+   - DELETE: delete menu item by id. Return 200.
+
+5. src/app/api/sessions/route.ts
+   - GET: return all sessions with warung data (call getAllSessions). As JSON.
+   - POST: create session. Body: { warungId, tanggal?, namaPenagih?, namaBank?, noRekening?, biayaTambahan? }. tanggal defaults to today. status defaults to 'open'. biayaTambahan defaults to 0. Insert and return created session with 201.
+
+6. src/app/api/sessions/[id]/route.ts
+   - GET: return session by id (getSessionById) + orders (getOrdersBySession). Return { ...sessionRow, orders }.
+   - PUT: update session. Body can include: status (to close/open), namaPenagih, namaBank, noRekening, biayaTambahan. If status is being set to 'closed', also set closedAt to now. If status set to 'open', clear closedAt. Return updated session.
+
+7. src/app/api/orders/route.ts
+   - POST: submit an order. Body: { sessionId, namaPemesan, items: [{ menuItemId, qty }] }.
+     - Validate sessionId, namaPemesan, and items not empty.
+     - Check if namaPemesan already has an order in this session (query orders table). If exists, return 409 with { error: "Nama ini sudah memesan di sesi ini" }.
+     - Insert into orders table (sessionId, namaPemesan).
+     - Insert all order_items for that order.
+     - Return created order with items, status 201.
+   - Handle the unique constraint violation as backup (catch error, if it's a unique violation on session_nama_idx, return 409).
+
+=== UI PAGES (7 files) ===
+
+8. src/app/page.tsx (Dashboard/Beranda)
+   - Server component. Show:
+     - Active sessions (status='open') from getAllSessions, filtered. Each as a card linking to /sesi/[id].
+     - Quick links to /warung and /sesi/baru.
+     - Mobile-friendly, simple cards.
+
+9. src/app/warung/page.tsx (List Warung)
+   - Server component. Show all warungs from getAllWarungs.
+   - Each warung as a card with name, link to /warung/[id] for edit.
+   - Button/link to /warung/baru to add new warung.
+
+10. src/app/warung/baru/page.tsx (Add Warung + Menu)
+    - Client component. Form with:
+      - Warung name input.
+      - Dynamic menu item list: each row has namaItem input + harga input (number) + remove button.
+      - "Tambah menu" button to add another row.
+      - Submit: POST to /api/warungs to create warung, then POST each menu item to /api/menu-items.
+      - On success: router.push to /warung.
+    - Use "use client".
+
+11. src/app/warung/[id]/page.tsx (Edit Warung + Menu CRUD)
+    - Server component that fetches warung + menu items. Pass to a client component.
+    - Create a separate client component file: src/app/warung/[id]/warung-edit-form.tsx
+      - Edit warung name (PUT to /api/warungs/[id]).
+      - List menu items with inline edit (namaItem, harga) + delete button.
+      - Add new menu item form at bottom (POST to /api/menu-items).
+      - Delete warung button (with confirm).
+    - Use router.refresh() after each mutation.
+
+12. src/app/sesi/baru/page.tsx (Create Session)
+    - Client component. Form with:
+      - Select warung (dropdown from getAllWarungs — fetch in server parent or use useEffect).
+      - Date picker (default today).
+      - Billing info: namaPenagih, namaBank, noRekening (text inputs).
+      - biayaTambahan (number, default 0).
+      - Submit: POST to /api/sessions. On success: router.push to /sesi/[id].
+    - Make the parent a server component that passes warungs list as prop. Create: src/app/sesi/baru/page.tsx as server, and src/app/sesi/baru/create-session-form.tsx as client.
+
+13. src/app/sesi/[id]/page.tsx (Session Detail + Live Recap)
+    - Server component. Fetch session + orders. Show:
+      - Warung name, tanggal, status badge.
+      - If open: show link to /pesan/[id] for sharing (copy link button).
+      - List of orders (namaPemesan + their items + their total).
+      - Total keseluruhan.
+      - If biayaTambahan > 0: show ongkir per person breakdown.
+      - If session is closed: show recap texts (see file 14).
+      - If session is open: "Tutup Sesi" button (client component) that PUTs status=closed.
+    - Create a client component for the close button + copy link: src/app/sesi/[id]/session-actions.tsx
+    - Create a client component for the recap display with copy buttons: src/app/sesi/[id]/recap-display.tsx
+      - Takes recap data as props.
+      - Shows both recap texts in <pre> blocks.
+      - Each has a "Copy" button using navigator.clipboard.writeText().
+      - Shows "Copied!" feedback for 2 seconds after click.
+      - For closed sessions, fetch recap data via getSessionRecapData and generate texts with generateWarungRecap + generateBillingRecap.
+
+14. src/app/pesan/[id]/page.tsx (Public Ordering Page)
+    - Server component that fetches session + warung + menu items.
+    - If session is closed: show "Sesi sudah ditutup" message.
+    - If session is open: show a client form to submit order.
+    - Create client component: src/app/pesan/[id]/order-form.tsx
+      - Input: namaPemesan (text).
+      - Menu selection: list all menu items with checkbox + qty selector (number input, min 1, default 1). Only show qty when checked.
+      - Submit: POST to /api/orders with { sessionId, namaPemesan, items }.
+      - On 409 (duplicate name): show error "Nama ini sudah memesan! Gunakan nama lain."
+      - On success: show success message with their order summary.
+      - "Pesan lagi" button to reset form (for another person).
+    - Mobile-first: large touch targets, simple layout.
+    - The page should show the warung name and date at top.
+
+IMPORTANT CONSTRAINTS:
+- Use Next.js App Router conventions. Server components by default, "use client" only when needed (forms, interactivity).
+- Use `import { NextResponse } from "next/server"` for API responses.
+- Use `import { eq } from "drizzle-orm"` and `import { db } from "@/db"` and `import { warungs, menuItems, sessions, orders, orderItems } from "@/db/schema"` in API routes.
+- Use the query functions from "@/db/queries" where available (they already handle joins).
+- For mutations (INSERT/UPDATE/DELETE) in API routes, use db directly: db.insert(table).values({...}).returning(), db.update(table).set({...}).where(eq(...)), db.delete(table).where(eq(...)).
+- All rupiah formatting: use formatRupiah() from "@/lib/utils".
+- All dates: use formatDateID() from "@/lib/utils".
+- Tailwind v4 classes (no config file needed, uses @import "tailwindcss").
+- Mobile-first design, max-w-3xl container, orange accent color (orange-600).
+- No external UI libraries — just Tailwind + raw HTML elements.
+- TypeScript: use proper types from schema exports where possible.
+- For client components that mutate data, use `const router = useRouter(); router.refresh()` after fetch.
+- For form submissions in client components: use fetch() to call the API routes, not server actions.
+- Remember: Drizzle ORM with node-postgres. The `db` instance is already configured with snake_case casing.
+- When inserting into menu_items table, the column names in JS are camelCase (warungId, namaItem, harga) because drizzle maps them to snake_case automatically.
+- Same for sessions (warungId, namaPenagih, namaBank, noRekening, biayaTambahan) and orders (sessionId, namaPemesan) and order_items (orderId, menuItemId).

@@ -1,0 +1,8 @@
+allowBuilds:
+  '@google/genai': set this to true or false
+  esbuild: false
+  protobufjs: set this to true or false
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - unrs-resolver
