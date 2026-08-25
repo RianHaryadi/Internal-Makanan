@@ -30,6 +30,12 @@ jobs:
             *)      echo "tag=dev"    >> "$GITHUB_OUTPUT" ;;
           esac
 
+      - name: Lowercase image name
+        id: meta
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository }}"
+          echo "image=${IMAGE,,}" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -46,7 +52,7 @@ jobs:
           context: pesan-makan
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.env.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.env.outputs.tag }}-${{ github.sha }}
+            ${{ steps.meta.outputs.image }}:${{ steps.env.outputs.tag }}
+            ${{ steps.meta.outputs.image }}:${{ steps.env.outputs.tag }}-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
