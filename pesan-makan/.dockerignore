@@ -1,0 +1,18 @@
+# deps
+node_modules
+.next
+.pnp
+.pnpm-store
+
+# env
+.env
+.env.local
+.env*.local
+
+# build artifacts
+Dockerfile
+docker-compose.yml
+
+# misc
+*.log
+.DS_Store

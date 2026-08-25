@@ -1,0 +1,36 @@
+services:
+  db:
+    image: docker.io/library/postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pesan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: pesan_makan
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks: [makanan]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pesan -d pesan_makan"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://pesan:${POSTGRES_PASSWORD}@db:5432/pesan_makan
+      NEXT_PUBLIC_URL: https://makanan.labpsiug.my.id
+    networks: [makanan]
+    ports:
+      - "3100:3000"
+
+networks:
+  makanan:
+    driver: bridge
+
+volumes:
+  db_data:
