@@ -1,36 +1,97 @@
+x-app-env: &app-env
+  restart: unless-stopped
+  environment:
+    DATABASE_URL: postgresql://pesan:${POSTGRES_PASSWORD}@db:5432/pesan_makan
+
 services:
-  db:
+  # ─────────────── STABLE ───────────────
+  db-stable:
     image: docker.io/library/postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: pesan
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: pesan_makan
-    volumes:
-      - db_data:/var/lib/postgresql/data
-    networks: [makanan]
+    volumes: [db_stable_data:/var/lib/postgresql/data]
+    networks: [makanan_stable]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pesan -d pesan_makan"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  app:
-    build: .
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
+  app-stable:
+    image: ghcr.io/rianharyadi/internal-makanan:stable
+    <<: *app-env
     environment:
-      DATABASE_URL: postgresql://pesan:${POSTGRES_PASSWORD}@db:5432/pesan_makan
+      DATABASE_URL: postgresql://pesan:${POSTGRES_PASSWORD}@db-stable:5432/pesan_makan
       NEXT_PUBLIC_URL: https://makanan.labpsiug.my.id
-    networks: [makanan]
-    ports:
-      - "3100:3000"
+    depends_on:
+      db-stable:
+        condition: service_healthy
+    networks: [makanan_stable]
+    ports: ["3100:3000"]
+
+  # ─────────────── BETA ───────────────
+  db-beta:
+    image: docker.io/library/postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pesan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: pesan_makan
+    volumes: [db_beta_data:/var/lib/postgresql/data]
+    networks: [makanan_beta]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pesan -d pesan_makan"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app-beta:
+    image: ghcr.io/rianharyadi/internal-makanan:beta
+    environment:
+      DATABASE_URL: postgresql://pesan:${POSTGRES_PASSWORD}@db-beta:5432/pesan_makan
+      NEXT_PUBLIC_URL: https://beta.makanan.labpsiug.my.id
+    depends_on:
+      db-beta:
+        condition: service_healthy
+    networks: [makanan_beta]
+    ports: ["3110:3000"]
+
+  # ─────────────── DEV ───────────────
+  db-dev:
+    image: docker.io/library/postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pesan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: pesan_makan
+    volumes: [db_dev_data:/var/lib/postgresql/data]
+    networks: [makanan_dev]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pesan -d pesan_makan"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app-dev:
+    image: ghcr.io/rianharyadi/internal-makanan:dev
+    environment:
+      DATABASE_URL: postgresql://pesan:${POSTGRES_PASSWORD}@db-dev:5432/pesan_makan
+      NEXT_PUBLIC_URL: https://dev.makanan.labpsiug.my.id
+    depends_on:
+      db-dev:
+        condition: service_healthy
+    networks: [makanan_dev]
+    ports: ["3105:3000"]
 
 networks:
-  makanan:
-    driver: bridge
+  makanan_stable: { driver: bridge }
+  makanan_beta:   { driver: bridge }
+  makanan_dev:    { driver: bridge }
 
 volumes:
-  db_data:
+  db_stable_data:
+  db_beta_data:
+  db_dev_data:
