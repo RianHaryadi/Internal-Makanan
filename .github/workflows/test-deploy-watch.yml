@@ -1,0 +1,43 @@
+name: test-deploy-watch
+
+# The deploy watcher runs from a systemd timer on the deployment host, so
+# its failure modes are invisible in CI unless they are exercised here.
+# The suite uses a fake `podman` and a fake `curl` on PATH: no container
+# runtime and no network are required.
+on:
+  pull_request:
+    paths:
+      - "pesan-makan/deploy-watch.sh"
+      - "pesan-makan/deploy-watch-all.sh"
+      - "pesan-makan/tests/**"
+      - ".github/workflows/test-deploy-watch.yml"
+  push:
+    branches: [dev, beta, main]
+    paths:
+      - "pesan-makan/deploy-watch.sh"
+      - "pesan-makan/deploy-watch-all.sh"
+      - "pesan-makan/tests/**"
+      - ".github/workflows/test-deploy-watch.yml"
+  workflow_dispatch:
+
+jobs:
+  shell-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure jq is present
+        run: |
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y jq
+          fi
+
+      - name: Syntax check
+        run: |
+          bash -n pesan-makan/deploy-watch.sh
+          bash -n pesan-makan/deploy-watch-all.sh
+
+      - name: Run the deploy watcher test suite
+        run: bash pesan-makan/tests/deploy-watch_test.sh
